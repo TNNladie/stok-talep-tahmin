@@ -1,0 +1,39 @@
+# Proje ayarları — tüm scriptler buradan okur
+data:
+  source: online_retail_ii        # online_retail_ii | store_item | demo
+  raw_dir: data/raw
+  processed_path: data/processed/daily.parquet
+  country: United Kingdom
+  top_n_items: 50
+
+forecast:
+  horizon: 28                     # gün
+  n_folds: 3                      # genişleyen pencere kat sayısı
+  lags: [28, 35, 42, 56]
+  rolling_windows: [7, 28]
+
+models:
+  random_forest:
+    n_estimators: 300
+    max_depth: 12
+    min_samples_leaf: 5
+    n_jobs: -1
+  xgboost:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    subsample: 0.8
+    colsample_bytree: 0.8
+  lightgbm:
+    n_estimators: 600
+    learning_rate: 0.05
+    num_leaves: 31
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    verbose: -1
+
+inventory:
+  lead_time_days: 7               # L
+  review_period_days: 7           # R
+  service_level: 0.95             # z ≈ 1.65
