@@ -24,12 +24,14 @@ def test_baselines():
 
 def test_clean_drops_returns_and_fills_days():
     raw = pd.DataFrame({
-        "Invoice": ["1", "C2", "3"], "StockCode": ["A", "A", "A"], "Quantity": [5, -5, 2],
-        "InvoiceDate": ["2010-01-01 10:00", "2010-01-01 11:00", "2010-01-03 09:00"],
-        "Price": [1.0, 1.0, 1.0], "Country": ["United Kingdom"] * 3,
+        "Invoice": ["0", "1", "C2", "3"], "StockCode": ["A", "A", "A", "A"],
+        "Quantity": [3, 5, -5, 2],
+        "InvoiceDate": ["2010-01-01 08:00", "2010-01-01 10:00", "2010-01-01 11:00", "2010-01-03 09:00"],
+        "Price": [1.0, 1.0, 1.0, 1.0], "Country": ["United Kingdom"] * 4,
     })
     out = clean_online_retail(raw)
-    assert out["qty"].tolist() == [5, 0, 2]
+    # 5 adetlik satış ve iptali birlikte silinir, 3 kalır; 2 Ocak boş gün 0 ile dolar
+    assert out["qty"].tolist() == [3, 0, 2]
 
 
 def test_policy_orders_when_low():

@@ -10,13 +10,25 @@ def clean_online_retail(raw: pd.DataFrame, country: str = "United Kingdom", top_
     df = raw.rename(columns={"Invoice": "invoice", "InvoiceNo": "invoice", "StockCode": "item_id",
                              "Quantity": "qty", "InvoiceDate": "date", "Price": "price",
                              "UnitPrice": "price", "Country": "country"}).copy()
+    df = df.drop_duplicates()                                  # YENİ: tekrar eden satırlar
     df["invoice"] = df["invoice"].astype(str)
-    df = df[~df["invoice"].str.startswith("C")]           # iadeler
+    df["item_id"] = df["item_id"].astype(str).str.strip()
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+
+    # YENİ: iptal edilen satışı, iptal faturasıyla birlikte çıkar
+    is_cancel = df["invoice"].str.startswith("C")
+    cancels = df[is_cancel].copy()
+    cancels["qty"] = -cancels["qty"]
+    sales = df[~is_cancel].copy()
+    key = ["item_id", "date", "qty"]
+    cancels["_n"] = cancels.groupby(key).cumcount()
+    sales["_n"] = sales.groupby(key).cumcount()
+    merged = sales.merge(cancels[key + ["_n"]], on=key + ["_n"], how="left", indicator=True)
+    df = merged[merged["_merge"] == "left_only"].drop(columns=["_n", "_merge"])
+
     df = df[(df["qty"] > 0) & (df["price"] > 0)]
     if country and "country" in df:
         df = df[df["country"] == country]
-    df["item_id"] = df["item_id"].astype(str).str.strip()
-    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
 
     daily = (df.groupby(["item_id", "date"])
                .agg(qty=("qty", "sum"), price=("price", "mean"))
