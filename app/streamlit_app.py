@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -13,6 +12,7 @@ from src.data.clean import make_demo_data  # noqa: E402
 from src.evaluation.backtest import run_ml  # noqa: E402
 from src.features.build import add_features  # noqa: E402
 from src.inventory.policy import recommend  # noqa: E402
+from src.models.train import fit_final, load, predict_future  # noqa: E402
 
 st.set_page_config(page_title="Stok Talep Tahmini", layout="wide")
 cfg = load_config()
@@ -37,23 +37,29 @@ sl = st.sidebar.slider("Hizmet düzeyi", 0.80, 0.99, cfg["inventory"]["service_l
 
 
 @st.cache_data
-def forecast_all(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Son tarihten sonraki H gün için LightGBM tahmini + doğrulama artıkları."""
-    last = df["date"].max()
-    future = pd.DataFrame([(last + pd.Timedelta(days=i), it) for it in df["item_id"].unique() for i in range(1, H + 1)],
-                          columns=["date", "item_id"])
-    future["qty"], future["price"] = np.nan, np.nan
-    full = pd.concat([df, future], ignore_index=True)
-    feat = add_features(full, cfg["forecast"]["lags"], cfg["forecast"]["rolling_windows"], H)
-    fc = run_ml(feat, last, H, cfg["models"], ["lightgbm"])
+def forecast_all(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float], str]:
+    """Son tarihten sonraki H gün için LightGBM tahmini + ürün bazlı artık std (sigma_e).
+
+    models/lightgbm.pkl varsa ve aynı ürünlerle, aynı son tarihe kadar eğitildiyse o kullanılır;
+    değilse (ör. yüklenen farklı bir CSV) model bu veriyle anında eğitilir."""
+    model, meta = load("lightgbm")
+    same = (meta is not None and meta["items"] == sorted(df["item_id"].unique().tolist())
+            and meta["train_end"] == str(df["date"].max().date()))
+    if same:
+        fc = predict_future(model, df, cfg, meta["features"])
+        return fc, meta["residual_std"], f"Kayıtlı model ({meta['trained_at']})"
+    model, cols = fit_final(df, cfg, "lightgbm")
     val = run_ml(add_features(df, cfg["forecast"]["lags"], cfg["forecast"]["rolling_windows"], H),
-                 last - pd.Timedelta(days=H), H, cfg["models"], ["lightgbm"])
-    return fc, val
+                 df["date"].max() - pd.Timedelta(days=H), H, cfg["models"], ["lightgbm"],
+                 cfg["forecast"].get("target_clip_quantile"))
+    sig = (val["y"] - val["pred"]).groupby(val["item_id"]).std().fillna(0).to_dict()
+    return predict_future(model, df, cfg, cols), sig, "Bu veriyle anında eğitildi"
 
 
-fc, val = forecast_all(daily)
+fc, sigmas, source = forecast_all(daily)
+st.sidebar.caption(f"Model: {source}")
 f_item = fc[fc["item_id"] == item].sort_values("date")
-resid_std = float((val[val["item_id"] == item]["y"] - val[val["item_id"] == item]["pred"]).std())
+resid_std = float(sigmas.get(item, 0.0))
 rec = recommend(f_item["pred"].to_numpy(), resid_std, on_hand, L, cfg["inventory"]["review_period_days"], sl)
 
 c1, c2, c3, c4 = st.columns(4)

@@ -10,7 +10,8 @@ forecast:
   horizon: 28                     # gün
   n_folds: 3                      # genişleyen pencere kat sayısı
   lags: [28, 35, 42, 56]
-  rolling_windows: [7, 28]
+  rolling_windows: [7, 28, 91]
+  target_clip_quantile: 0.99      # eğitim hedefi ürün bazında %99'da kırpılır (toptan sipariş sıçramaları); null = kapalı
 
 models:
   random_forest:

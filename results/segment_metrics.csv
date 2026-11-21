@@ -1,0 +1,9 @@
+segment,model,n_items,MAE,RMSE,MAPE,WAPE
+erratic,lightgbm,29,43.038,128.79,266.22,76.291
+erratic,ma_28,29,52.035,129.802,314.148,92.239
+erratic,random_forest,29,49.526,127.286,453.657,87.792
+erratic,xgboost,29,44.205,130.531,274.844,78.36
+lumpy,lightgbm,21,42.174,176.691,189.096,84.324
+lumpy,ma_28,21,56.287,179.911,328.574,112.543
+lumpy,random_forest,21,51.652,173.941,455.22,103.275
+lumpy,xgboost,21,43.775,177.312,222.704,87.527
