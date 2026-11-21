@@ -3,11 +3,14 @@ import pandas as pd
 
 from src.config import load_config
 from src.data.clean import clean_online_retail, make_demo_data
-from src.evaluation.backtest import backtest
+from src.evaluation.backtest import backtest, clip_target
 from src.evaluation.metrics import mae, mape, wape
+from src.evaluation.segments import classify
+from src.features.build import add_features, make_future_frame
 from src.inventory.policy import recommend
 from src.inventory.simulate import simulate
 from src.models.baselines import moving_average, seasonal_naive
+from src.models.ml import make_model
 
 
 def test_metrics():
@@ -32,6 +35,7 @@ def test_clean_drops_returns_and_fills_days():
     out = clean_online_retail(raw)
     # 5 adetlik satış ve iptali birlikte silinir, 3 kalır; 2 Ocak boş gün 0 ile dolar
     assert out["qty"].tolist() == [3, 0, 2]
+    assert out["is_open"].tolist() == [1, 0, 1]          # 2 Ocak'ta hiç fatura yok -> kapalı
 
 
 def test_policy_orders_when_low():
@@ -47,10 +51,44 @@ def test_simulation_runs():
 
 
 def test_backtest_end_to_end():
-    cfg = load_config()
+    cfg = load_config(tuned=False)
     cfg["forecast"]["n_folds"] = 1
     cfg["models"]["random_forest"]["n_estimators"] = 20
     cfg["models"]["xgboost"]["n_estimators"] = 30
     cfg["models"]["lightgbm"]["n_estimators"] = 30
     _, summary = backtest(make_demo_data(n_items=3, days=300), cfg)
     assert {"persistence", "lightgbm", "xgboost", "random_forest"} <= set(summary.index)
+
+
+def test_cancel_matched_across_days_by_customer():
+    raw = pd.DataFrame({
+        "Invoice": ["1", "2", "C3"], "StockCode": ["A", "A", "A"], "Quantity": [5, 5, -5],
+        "InvoiceDate": ["2010-01-01 10:00", "2010-01-02 10:00", "2010-01-12 09:00"],
+        "Price": [1.0] * 3, "Customer ID": [100.0, 200.0, 200.0], "Country": ["United Kingdom"] * 3,
+    })
+    out = clean_online_retail(raw).set_index("date")["qty"]
+    # İptal 10 gün sonra geldi; aynı müşterinin (200) satışı silinir, 100'ünki kalır
+    assert out.loc["2010-01-01"] == 5 and out.sum() == 5
+
+
+def test_future_frame_has_price_and_closed_days():
+    df = make_demo_data(n_items=2, days=200)
+    df.loc[df["date"].dt.dayofweek == 5, ["qty", "is_open"]] = 0      # cumartesileri kapat
+    full = make_future_frame(df, 28)
+    feat = add_features(full, horizon=28)
+    fut = feat[feat["date"] > df["date"].max()]
+    assert len(fut) == 2 * 28
+    assert fut["price_rel"].notna().all()                              # eski hata: NaN -> 0
+    assert (fut.loc[fut["dow"] == 5, "is_open"] == 0).all() and (fut.loc[fut["dow"] != 5, "is_open"] == 1).all()
+
+
+def test_tweedie_for_both_boosters_and_clip():
+    assert make_model("xgboost", {}).get_params()["objective"] == "reg:tweedie"
+    assert make_model("lightgbm", {}).get_params()["objective"] == "tweedie"
+    tr = pd.DataFrame({"item_id": ["a"] * 100, "qty": list(range(99)) + [10_000]})
+    assert clip_target(tr, 0.99).max() < 10_000 and clip_target(tr, None).max() == 10_000
+
+
+def test_segments():
+    seg = classify(make_demo_data(n_items=3, days=200)).set_index("item_id")["segment"]
+    assert seg["P000"] in {"intermittent", "lumpy"} and seg["P001"] in {"smooth", "erratic"}

@@ -2,6 +2,7 @@
 
 Kullanım:
     python -m src.data.download --source online_retail_ii
+    python -m src.data.download --source online_retail_ii_github   # UCI erişilemezse yedek (pyreadr)
     python -m src.data.download --source store_item   # Kaggle CLI + API anahtarı gerekir
 """
 import argparse
@@ -17,6 +18,25 @@ def download_online_retail_ii(raw_dir: Path) -> Path:
 
     ds = fetch_ucirepo(id=502)
     df = ds.data.original if ds.data.original is not None else ds.data.features
+    out = raw_dir / "online_retail_ii.parquet"
+    df.to_parquet(out, index=False)
+    return out
+
+
+def download_online_retail_ii_github(raw_dir: Path) -> Path:
+    """Yedek kaynak: UCI'ye erişilemezse aynı veri (1.067.371 satır) allanvc/onlineretail2
+    R paketinden alınır (bağışçı Dr. Daqing Chen'in izniyle, ticari olmayan kullanım).
+    Ek gereksinim: pip install pyreadr"""
+    import tempfile
+    import urllib.request
+
+    import pyreadr
+
+    url = "https://raw.githubusercontent.com/allanvc/onlineretail2/master/data/onlineretail2.rda"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "onlineretail2.rda"
+        urllib.request.urlretrieve(url, path)
+        df = pyreadr.read_r(str(path))["onlineretail2"].rename(columns={"CustomerID": "Customer ID"})
     out = raw_dir / "online_retail_ii.parquet"
     df.to_parquet(out, index=False)
     return out
@@ -41,6 +61,8 @@ def main() -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     if args.source == "online_retail_ii":
         print("İndirildi:", download_online_retail_ii(raw_dir))
+    elif args.source == "online_retail_ii_github":
+        print("İndirildi:", download_online_retail_ii_github(raw_dir))
     elif args.source == "store_item":
         print("İndirildi:", download_store_item(raw_dir))
     else:

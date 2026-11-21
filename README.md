@@ -7,25 +7,38 @@ Bitirme projesi — 4 kişilik ekip, 10 haftalık sprint.
 ## Hızlı başlangıç
 
 ```bash
-git clone https://github.com/<kullanici>/stok-talep-tahmin.git
+git clone https://github.com/TNNladie/stok-talep-tahmin.git
 cd stok-talep-tahmin
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 make test          # birim testleri
 make demo          # internetsiz sentetik veriyle tüm akış
-make data run      # Online Retail II indir + gerçek veriyle akış
-make app           # Streamlit karar destek ekranı
+make data         # Online Retail II indir (UCI erişilemezse: make data-github)
+make run-full     # gerçek veride backtest + final model eğitimi (models/) + rapor şekli
+make app          # Streamlit karar destek ekranı (kayıtlı modeli kullanır)
+make tune         # (isteğe bağlı) hiperparametre ayarını yeniden yap
 ```
 
 ## Akış
 
 ```
 Ham satış verisi → temizleme (iade/negatif at, günlük topla, eksik gün = 0)
- → öznitelik (lag 28–56, rolling, takvim, tatil, fiyat)
+ → öznitelik (lag 28–56, rolling 7/28/91, geçen yıl aynı dönem, mağaza geneli, takvim, açık/kapalı gün, fiyat)
  → modeller (Persistence, Mevsimsel Naive, MA-7/28 | RandomForest, XGBoost, LightGBM)
  → zaman bazlı backtest (3 kat × 28 gün) → MAE / RMSE / MAPE / WAPE
- → en iyi model → SS = z·σ·√L, ROP = D_L + SS → sipariş önerisi → Streamlit ekranı
+ → doğrulama katlarında hiperparametre ayarı → final LightGBM (models/)
+ → SS = z·σ·√L, ROP = D_L + SS → sipariş önerisi → Streamlit ekranı
 ```
+
+## Güncel sonuç (Online Retail II, 50 ürün, 3 test katı × 28 gün)
+
+| Model | MAE | WAPE |
+|---|---:|---:|
+| **LightGBM** | **42.68** | **%79.7** |
+| XGBoost | 44.03 | %82.3 |
+| MA-28 (en iyi baseline) | 53.82 | %100.6 |
+
+LightGBM en iyi baseline'dan **%20.7** daha düşük MAE üretiyor (hedef: ≥ %10). Ayrıntı: `reports/model_egitimi_raporu.md`.
 
 ## Veri setleri
 
